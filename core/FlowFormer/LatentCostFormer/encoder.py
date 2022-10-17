@@ -257,6 +257,7 @@ class CostPerceiverEncoder(nn.Module):
         self.depth = cfg.encoder_depth
 
         self.latent_tokens = nn.Parameter(torch.randn(1, cfg.cost_latent_token_num, cfg.cost_latent_dim))
+        #  nn.Parameter 将其变成可学习参数
 
         query_token_dim, tgt_token_dim = cfg.cost_latent_dim, cfg.cost_latent_input_dim*2
         qk_dim, v_dim = query_token_dim, query_token_dim
