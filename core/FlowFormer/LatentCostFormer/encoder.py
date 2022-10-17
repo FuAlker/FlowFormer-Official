@@ -21,7 +21,7 @@ import time
 
 from timm.models.layers import Mlp, DropPath, activations, to_2tuple, trunc_normal_
 
-class PatchEmbed(nn.Module):
+class PatchEmbed(nn.Module):  # 给坐标进行sin和cos转换
     def __init__(self, patch_size=16, in_chans=1, embed_dim=64, pe='linear'):
         super().__init__()
         self.patch_size = patch_size
@@ -55,7 +55,7 @@ class PatchEmbed(nn.Module):
 
     def forward(self, x) -> Tuple[torch.Tensor, Size_]:
         B, C, H, W = x.shape    # C == 1
-
+        # 调整x的H，W是patch_size的整数倍
         pad_l = pad_t = 0
         pad_r = (self.patch_size - W % self.patch_size) % self.patch_size
         pad_b = (self.patch_size - H % self.patch_size) % self.patch_size
@@ -63,18 +63,24 @@ class PatchEmbed(nn.Module):
 
         x = self.proj(x)
         out_size = x.shape[2:] 
-
+        #在coords_grid中，coords = torch.meshgrid(torch.arange(ht), torch.arange(wd)) 生成的tuple第一组分是矩阵x，第二组分是矩阵y
+        #coords = torch.stack(coords[::-1], dim=0).float() 转换tuple，使得第一组分是矩阵y坐标，第二组分是矩阵x坐标
         patch_coord = coords_grid(B, out_size[0], out_size[1]).to(x.device) * self.patch_size + self.patch_size/2 # in feature coordinate space
         patch_coord = patch_coord.view(B, 2, -1).permute(0, 2, 1)
+        #此时的patch_coord，组分为坐标值，其中第一个坐标值是图像x，第二个坐标值是图像y
+        #通过下面的if语句，将patch_coord坐标sin与cos化
+        #其中，patch_coord[..., -2:-1]意思是只取坐标的左列,   ...对等于:,:,
         if self.pe == 'linear':
             patch_coord_enc = LinearPositionEmbeddingSine(patch_coord, dim=self.dim)
+            # 将每个坐标的值都计算成了sin和cos两种形式
         elif self.pe == 'exp':
             patch_coord_enc = ExpPositionEmbeddingSine(patch_coord, dim=self.dim)
+            
         patch_coord_enc = patch_coord_enc.permute(0, 2, 1).view(B, -1, out_size[0], out_size[1])
-
-        x_pe = torch.cat([x, patch_coord_enc], dim=1)
-        x =  self.ffn_with_coord(x_pe)
-        x = self.norm(x.flatten(2).transpose(1, 2))
+        
+        x_pe = torch.cat([x, patch_coord_enc], dim=1)  # 罗列在z轴方向，即通道方向
+        x =  self.ffn_with_coord(x_pe)  # 卷积 RelU 卷积
+        x = self.norm(x.flatten(2).transpose(1, 2))  # transpose仅能进行二维转置，permute可以进行多维转置
 
         return x, out_size
 
