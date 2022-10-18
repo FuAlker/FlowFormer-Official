@@ -200,8 +200,10 @@ class SelfAttentionLayer(nn.Module):
 
 
 class CrossAttentionLayer(nn.Module):
+    # qk_dim, v_dim = query_token_dim, query_token_dim，表明了这三者的数值是一样的
     def __init__(self, qk_dim, v_dim, query_token_dim, tgt_token_dim, num_heads=8, attn_drop=0., proj_drop=0., drop_path=0., dropout=0.):
         super(CrossAttentionLayer, self).__init__()
+        # 断言，当没有整除时直接报错
         assert qk_dim % num_heads == 0, f"dim {qk_dim} should be divided by num_heads {num_heads}."
         assert v_dim % num_heads == 0, f"dim {v_dim} should be divided by num_heads {num_heads}."
         """
@@ -212,14 +214,16 @@ class CrossAttentionLayer(nn.Module):
         head_dim = qk_dim // num_heads
         self.scale = head_dim ** -0.5
 
-        self.norm1 = nn.LayerNorm(query_token_dim)
+        self.norm1 = nn.LayerNorm(query_token_dim)  # 归一化的维度是query_token_dim，如果是整数的话，这个值的大小只能是即将归一化数值的最后一维
         self.norm2 = nn.LayerNorm(query_token_dim)
+        # 注意力机制当中涉及到了爱因斯坦张量公式
         self.multi_head_attn = BroadMultiHeadAttention(qk_dim, num_heads)
         self.q, self.k, self.v = nn.Linear(query_token_dim, qk_dim, bias=True), nn.Linear(tgt_token_dim, qk_dim, bias=True), nn.Linear(tgt_token_dim, v_dim, bias=True)
+        # self.q的输出维度是qk_dim，self.k的输出维度是qk_dim，self.v的输出维度是v_dim
 
-        self.proj = nn.Linear(v_dim, query_token_dim)
+        self.proj = nn.Linear(v_dim, query_token_dim)  # 输出维度是query_token_dim，这里输入和输出维度其实是一致的，v_dim大小等于query_token_dim
         self.proj_drop = nn.Dropout(proj_drop)
-        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()  # 恒等函数，y=x
 
         self.ffn = nn.Sequential(
             nn.Linear(query_token_dim, query_token_dim),
@@ -227,7 +231,7 @@ class CrossAttentionLayer(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(query_token_dim, query_token_dim),
             nn.Dropout(dropout)
-        )
+        )  # 输出维度与输入维度一致，均为query_token_dim
 
     def forward(self, query, tgt_token):
         """
@@ -237,6 +241,7 @@ class CrossAttentionLayer(nn.Module):
         query = self.norm1(query)
 
         q, k, v = self.q(query), self.k(tgt_token), self.v(tgt_token)
+        # 维度分别为qk_dim, qk_dim, v_dim,这俩均为query_token_dim
 
         x = self.multi_head_attn(q, k, v)
 
